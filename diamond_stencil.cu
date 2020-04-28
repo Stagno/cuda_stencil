@@ -69,13 +69,14 @@ __global__ void reduce_dvt_and_compute_vn(
         }
         const int sparseIdx = ecvSparseKOffset + pidx * E_C_V_SIZE + nbhIter;
         float2 __local_uv = __ldg(&uv[verticesDenseKOffset + nbhIdx]);
-        float2 __local_primal_normal_vert = __ldg(&primal_normal_vert[sparseIdx]);
         float2 __local_dual_normal_vert = __ldg(&dual_normal_vert[sparseIdx]);
 
         dawn::float_type rhs =
             (__local_uv.x * __local_dual_normal_vert.x + __local_uv.y * __local_dual_normal_vert.y);
         lhs_tang += weights_tang[nbhIter] * rhs;
         lhs_norm += weights_norm[nbhIter] * rhs;
+
+        float2 __local_primal_normal_vert = __ldg(&primal_normal_vert[sparseIdx]);
         vn_vert[sparseIdx] = __local_uv.x * __local_primal_normal_vert.x +
                              __local_uv.y * __local_primal_normal_vert.y;
       }
