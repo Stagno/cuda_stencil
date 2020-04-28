@@ -75,13 +75,17 @@ __global__ void reduce_dvt_and_compute_vn(
             (__local_uv.x * __local_dual_normal_vert.x + __local_uv.y * __local_dual_normal_vert.y);
         lhs_tang += weights_tang[nbhIter] * rhs;
         lhs_norm += weights_norm[nbhIter] * rhs;
+      }
+      dvt_tang[edgesDenseKOffset + pidx] = lhs_tang;
+      dvt_norm[edgesDenseKOffset + pidx] = lhs_norm;
 
+      for(int nbhIter = 0; nbhIter < E_C_V_SIZE; nbhIter++) {
+        const int sparseIdx = ecvSparseKOffset + pidx * E_C_V_SIZE + nbhIter;
+        float2 __local_uv = __ldg(&uv[verticesDenseKOffset + nbhIdx]);
         float2 __local_primal_normal_vert = __ldg(&primal_normal_vert[sparseIdx]);
         vn_vert[sparseIdx] = __local_uv.x * __local_primal_normal_vert.x +
                              __local_uv.y * __local_primal_normal_vert.y;
       }
-      dvt_tang[edgesDenseKOffset + pidx] = lhs_tang;
-      dvt_norm[edgesDenseKOffset + pidx] = lhs_norm;
     }
   }
 }
