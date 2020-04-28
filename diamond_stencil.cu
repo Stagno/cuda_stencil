@@ -42,39 +42,11 @@ inline void gpuAssert(cudaError_t code, const char* file, int line, bool abort =
 #define BLOCK_SIZE 128
 #define DEVICE_MISSING_VALUE -1
 
-__global__ void compute_vn(int numEdges, int numVertices, int kSize,
-                           const int* __restrict__ ecvTable, dawn::float_type* __restrict__ vn_vert,
-                           const float2* __restrict__ uv,
-                           const float2* __restrict__ primal_normal_vert) {
-  unsigned int pidx = blockIdx.x * blockDim.x + threadIdx.x;
-  if(pidx >= numEdges) {
-    return;
-  }
-  {
-    for(int kIter = 0; kIter < kSize; kIter++) {
-      const int verticesDenseKOffset = kIter * numVertices;
-      const int ecvSparseKOffset = kIter * numEdges * E_C_V_SIZE;
-
-      for(int nbhIter = 0; nbhIter < E_C_V_SIZE; nbhIter++) { // for(e->c->v)
-        int nbhIdx = __ldg(&ecvTable[pidx * E_C_V_SIZE + nbhIter]);
-        if(nbhIdx == DEVICE_MISSING_VALUE) {
-          continue;
-        }
-        const int sparseIdx = ecvSparseKOffset + pidx * E_C_V_SIZE + nbhIter;
-        float2 uv_i = __ldg(&uv[verticesDenseKOffset + nbhIdx]);
-        float2 nrm_i = __ldg(&primal_normal_vert[sparseIdx]);
-
-        vn_vert[sparseIdx] = uv_i.x * nrm_i.x + uv_i.y * nrm_i.y;
-      }
-    }
-  }
-}
-
-__global__ void reduce_dvt(int numEdges, int numVertices, int kSize,
-                           const int* __restrict__ ecvTable,
-                           dawn::float_type* __restrict__ dvt_tang,
-                           dawn::float_type* __restrict__ dvt_norm, const float2* __restrict__ uv,
-                           const float2* __restrict__ dual_normal_vert) {
+__global__ void reduce_dvt_and_compute_vn(
+    int numEdges, int numVertices, int kSize, const int* __restrict__ ecvTable,
+    dawn::float_type* __restrict__ dvt_tang, dawn::float_type* __restrict__ dvt_norm,
+    dawn::float_type* __restrict__ vn_vert, const float2* __restrict__ uv,
+    const float2* __restrict__ primal_normal_vert, const float2* __restrict__ dual_normal_vert) {
   unsigned int pidx = blockIdx.x * blockDim.x + threadIdx.x;
   if(pidx >= numEdges) {
     return;
@@ -95,12 +67,17 @@ __global__ void reduce_dvt(int numEdges, int numVertices, int kSize,
         if(nbhIdx == DEVICE_MISSING_VALUE) {
           continue;
         }
-        float2 uv_i = __ldg(&uv[verticesDenseKOffset + nbhIdx]);
-        float2 nrm_i = __ldg(&dual_normal_vert[ecvSparseKOffset + pidx * E_C_V_SIZE + nbhIter]);
+        const int sparseIdx = ecvSparseKOffset + pidx * E_C_V_SIZE + nbhIter;
+        float2 __local_uv = __ldg(&uv[verticesDenseKOffset + nbhIdx]);
+        float2 __local_primal_normal_vert = __ldg(&primal_normal_vert[sparseIdx]);
+        float2 __local_dual_normal_vert = __ldg(&dual_normal_vert[sparseIdx]);
 
-        dawn::float_type rhs = (uv_i.x * nrm_i.x + uv_i.y * nrm_i.y);
+        dawn::float_type rhs =
+            (__local_uv.x * __local_dual_normal_vert.x + __local_uv.y * __local_dual_normal_vert.y);
         lhs_tang += weights_tang[nbhIter] * rhs;
         lhs_norm += weights_norm[nbhIter] * rhs;
+        vn_vert[sparseIdx] = __local_uv.x * __local_primal_normal_vert.x +
+                             __local_uv.y * __local_primal_normal_vert.y;
       }
       dvt_tang[edgesDenseKOffset + pidx] = lhs_tang;
       dvt_norm[edgesDenseKOffset + pidx] = lhs_norm;
@@ -524,13 +501,9 @@ void DiamondStencil::diamond_stencil::run() {
   // starting timers
   start();
 
-  compute_vn<<<dG, dB>>>(mesh_.NumEdges(), mesh_.NumNodes(), kSize_, mesh_.ECVTable(), vn_vert_,
-                         uv_, primal_normal_vert_);
-  gpuErrchk(cudaPeekAtLastError());
-  gpuErrchk(cudaDeviceSynchronize());
-
-  reduce_dvt<<<dG, dB>>>(mesh_.NumEdges(), mesh_.NumNodes(), kSize_, mesh_.ECVTable(), dvt_tang_,
-                         dvt_norm_, uv_, dual_normal_vert_);
+  reduce_dvt_and_compute_vn<<<dG, dB>>>(mesh_.NumEdges(), mesh_.NumNodes(), kSize_,
+                                        mesh_.ECVTable(), dvt_tang_, dvt_norm_, vn_vert_, uv_,
+                                        primal_normal_vert_, dual_normal_vert_);
   gpuErrchk(cudaPeekAtLastError());
   gpuErrchk(cudaDeviceSynchronize());
 
