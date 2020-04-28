@@ -39,7 +39,7 @@ inline void gpuAssert(cudaError_t code, const char* file, int line, bool abort =
 }
 
 #define E_C_V_SIZE 4
-#define BLOCK_SIZE 128
+#define BLOCK_SIZE 256
 #define DEVICE_MISSING_VALUE -1
 
 __global__ void reduce_dvt_and_compute_vn(
