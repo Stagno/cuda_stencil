@@ -80,6 +80,10 @@ __global__ void reduce_dvt_and_compute_vn(
       dvt_norm[edgesDenseKOffset + pidx] = lhs_norm;
 
       for(int nbhIter = 0; nbhIter < E_C_V_SIZE; nbhIter++) {
+        int nbhIdx = __ldg(&ecvTable[pidx * E_C_V_SIZE + nbhIter]);
+        if(nbhIdx == DEVICE_MISSING_VALUE) {
+          continue;
+        }
         const int sparseIdx = ecvSparseKOffset + pidx * E_C_V_SIZE + nbhIter;
         float2 __local_uv = __ldg(&uv[verticesDenseKOffset + nbhIdx]);
         float2 __local_primal_normal_vert = __ldg(&primal_normal_vert[sparseIdx]);
