@@ -91,6 +91,7 @@ __global__ void reduce_dvt_and_smagorinsky_12_and_diamond(
   {
     for(int kIter = 0; kIter < kSize; kIter++) {
       const int edgesDenseKOffset = kIter * numEdges;
+      const int verticesDenseKOffset = kIter * numVertices;
       const int ecvSparseKOffset = kIter * numEdges * E_C_V_SIZE;
 
       const dawn::float_type __local_inv_primal =
