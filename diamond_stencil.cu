@@ -56,13 +56,13 @@ __global__ void compute_vn(int numEdges, int numVertices, int kSize,
       const int ecvSparseKOffset = kIter * numEdges * E_C_V_SIZE;
 
       for(int nbhIter = 0; nbhIter < E_C_V_SIZE; nbhIter++) { // for(e->c->v)
-        int nbhIdx = __ldg(&ecvTable[pidx * E_C_V_SIZE + nbhIter]);
+        int nbhIdx = ecvTable[pidx * E_C_V_SIZE + nbhIter];
         if(nbhIdx == DEVICE_MISSING_VALUE) {
           continue;
         }
         const int sparseIdx = ecvSparseKOffset + nbhIter * numEdges + pidx;
-        float2 uv_i = __ldg(&uv[verticesDenseKOffset + nbhIdx]);
-        float2 nrm_i = __ldg(&primal_normal_vert[sparseIdx]);
+        float2 uv_i = uv[verticesDenseKOffset + nbhIdx];
+        float2 nrm_i = primal_normal_vert[sparseIdx];
 
         vn_vert[sparseIdx] = uv_i.x * nrm_i.x + uv_i.y * nrm_i.y;
       }
@@ -88,12 +88,12 @@ __global__ void reduce_dvt_tang(int numEdges, int numVertices, int kSize,
 
       dawn::float_type lhs = 0.;
       for(int nbhIter = 0; nbhIter < E_C_V_SIZE; nbhIter++) { // for(e->c->v)
-        int nbhIdx = __ldg(&ecvTable[pidx * E_C_V_SIZE + nbhIter]);
+        int nbhIdx = ecvTable[pidx * E_C_V_SIZE + nbhIter];
         if(nbhIdx == DEVICE_MISSING_VALUE) {
           continue;
         }
-        float2 uv_i = __ldg(&uv[verticesDenseKOffset + nbhIdx]);
-        float2 nrm_i = __ldg(&dual_normal_vert[ecvSparseKOffset + nbhIter * numEdges + pidx]);
+        float2 uv_i = uv[verticesDenseKOffset + nbhIdx];
+        float2 nrm_i = dual_normal_vert[ecvSparseKOffset + nbhIter * numEdges + pidx];
 
         lhs += weights[nbhIter] * (uv_i.x * nrm_i.x + uv_i.y * nrm_i.y);
       }
@@ -112,7 +112,7 @@ __global__ void finish_dvt_tang(int numEdges, int kSize, dawn::float_type* __res
     const int edgesDenseKOffset = kIter * numEdges;
 
     dvt_tang[edgesDenseKOffset + pidx] =
-        dvt_tang[edgesDenseKOffset + pidx] * __ldg(&tangent_orientation[edgesDenseKOffset + pidx]);
+        dvt_tang[edgesDenseKOffset + pidx] * tangent_orientation[edgesDenseKOffset + pidx];
   }
 }
 
@@ -134,13 +134,13 @@ __global__ void reduce_dvt_norm(int numEdges, int numVertices, int kSize,
 
       dawn::float_type lhs = 0.;
       for(int nbhIter = 0; nbhIter < E_C_V_SIZE; nbhIter++) { // for(e->c->v)
-        int nbhIdx = __ldg(&ecvTable[pidx * E_C_V_SIZE + nbhIter]);
+        int nbhIdx = ecvTable[pidx * E_C_V_SIZE + nbhIter];
         if(nbhIdx == DEVICE_MISSING_VALUE) {
           continue;
         }
-        float2 __local_uv_vert = __ldg(&uv_vert[verticesDenseKOffset + nbhIdx]);
+        float2 __local_uv_vert = uv_vert[verticesDenseKOffset + nbhIdx];
         float2 __local_dual_normal_vert =
-            __ldg(&dual_normal_vert[ecvSparseKOffset + nbhIter * numEdges + pidx]);
+            dual_normal_vert[ecvSparseKOffset + nbhIter * numEdges + pidx];
         lhs += weights[nbhIter] * (__local_uv_vert.x * __local_dual_normal_vert.x +
                                    __local_uv_vert.y * __local_dual_normal_vert.y);
       }
@@ -165,7 +165,7 @@ __global__ void smagorinsky_1(int numEdges, int numVertices, int kSize,
 
       dawn::float_type lhs = 0.;
       for(int nbhIter = 0; nbhIter < E_C_V_SIZE; nbhIter++) { // for(e->c->v)
-        int nbhIdx = __ldg(&ecvTable[pidx * E_C_V_SIZE + nbhIter]);
+        int nbhIdx = ecvTable[pidx * E_C_V_SIZE + nbhIter];
         if(nbhIdx == DEVICE_MISSING_VALUE) {
           continue;
         }
@@ -190,11 +190,9 @@ smagorinsky_1_multitply_facs(int numEdges, int kSize, dawn::float_type* __restri
     const int edgesDenseKOffset = kIter * numEdges;
 
     kh_smag_1[edgesDenseKOffset + pidx] =
-        kh_smag_1[edgesDenseKOffset + pidx] *
-            __ldg(&inv_primal_edge_length[edgesDenseKOffset + pidx]) *
-            __ldg(&tangent_orientation[edgesDenseKOffset + pidx]) +
-        __ldg(&dvt_norm[edgesDenseKOffset + pidx]) *
-            __ldg(&inv_vert_vert_length[edgesDenseKOffset + pidx]);
+        kh_smag_1[edgesDenseKOffset + pidx] * inv_primal_edge_length[edgesDenseKOffset + pidx] *
+            tangent_orientation[edgesDenseKOffset + pidx] +
+        dvt_norm[edgesDenseKOffset + pidx] * inv_vert_vert_length[edgesDenseKOffset + pidx];
   }
 }
 
@@ -228,7 +226,7 @@ __global__ void smagorinsky_2(int numEdges, int numVertices, int kSize,
 
       dawn::float_type lhs = 0.;
       for(int nbhIter = 0; nbhIter < E_C_V_SIZE; nbhIter++) { // for(e->c->v)
-        int nbhIdx = __ldg(&ecvTable[pidx * E_C_V_SIZE + nbhIter]);
+        int nbhIdx = ecvTable[pidx * E_C_V_SIZE + nbhIter];
         if(nbhIdx == DEVICE_MISSING_VALUE) {
           continue;
         }
@@ -252,10 +250,8 @@ smagorinsky_2_multitply_facs(int numEdges, int kSize, dawn::float_type* __restri
     const int edgesDenseKOffset = kIter * numEdges;
 
     kh_smag_2[edgesDenseKOffset + pidx] =
-        kh_smag_2[edgesDenseKOffset + pidx] *
-            __ldg(&inv_vert_vert_length[edgesDenseKOffset + pidx]) +
-        __ldg(&dvt_tang[edgesDenseKOffset + pidx]) *
-            __ldg(&inv_primal_edge_length[edgesDenseKOffset + pidx]);
+        kh_smag_2[edgesDenseKOffset + pidx] * inv_vert_vert_length[edgesDenseKOffset + pidx] +
+        dvt_tang[edgesDenseKOffset + pidx] * inv_primal_edge_length[edgesDenseKOffset + pidx];
   }
 }
 
@@ -304,18 +300,18 @@ __global__ void diamond(int numEdges, int kSize, const int* __restrict__ ecvTabl
     const int ecvSparseKOffset = kIter * numEdges * E_C_V_SIZE;
 
     const dawn::float_type weights[E_C_V_SIZE] = {
-        __ldg(&inv_primal_edge_length[edgesDenseKOffset + pidx]) *
-            __ldg(&inv_primal_edge_length[edgesDenseKOffset + pidx]),
-        __ldg(&inv_primal_edge_length[edgesDenseKOffset + pidx]) *
-            __ldg(&inv_primal_edge_length[edgesDenseKOffset + pidx]),
-        __ldg(&inv_vert_vert_length[edgesDenseKOffset + pidx]) *
-            __ldg(&inv_vert_vert_length[edgesDenseKOffset + pidx]),
-        __ldg(&inv_vert_vert_length[edgesDenseKOffset + pidx]) *
-            __ldg(&inv_vert_vert_length[edgesDenseKOffset + pidx])};
+        inv_primal_edge_length[edgesDenseKOffset + pidx] *
+            inv_primal_edge_length[edgesDenseKOffset + pidx],
+        inv_primal_edge_length[edgesDenseKOffset + pidx] *
+            inv_primal_edge_length[edgesDenseKOffset + pidx],
+        inv_vert_vert_length[edgesDenseKOffset + pidx] *
+            inv_vert_vert_length[edgesDenseKOffset + pidx],
+        inv_vert_vert_length[edgesDenseKOffset + pidx] *
+            inv_vert_vert_length[edgesDenseKOffset + pidx]};
 
     dawn::float_type lhs = 0.;
     for(int nbhIter = 0; nbhIter < E_C_V_SIZE; nbhIter++) { // for(e->c->v)
-      int nbhIdx = __ldg(&ecvTable[pidx * E_C_V_SIZE + nbhIter]);
+      int nbhIdx = ecvTable[pidx * E_C_V_SIZE + nbhIter];
       if(nbhIdx == DEVICE_MISSING_VALUE) {
         continue;
       }
@@ -339,12 +335,10 @@ __global__ void nabla2(int numEdges, int kSize, dawn::float_type* __restrict__ n
 
     nabla2[edgesDenseKOffset + pidx] =
         nabla2[edgesDenseKOffset + pidx] -
-        8. * __ldg(&vn[edgesDenseKOffset + pidx]) *
-            __ldg(&inv_primal_edge_length[edgesDenseKOffset + pidx]) *
-            __ldg(&inv_primal_edge_length[edgesDenseKOffset + pidx]) -
-        8. * __ldg(&vn[edgesDenseKOffset + pidx]) *
-            __ldg(&inv_vert_vert_length[edgesDenseKOffset + pidx]) *
-            __ldg(&inv_vert_vert_length[edgesDenseKOffset + pidx]);
+        8. * vn[edgesDenseKOffset + pidx] * inv_primal_edge_length[edgesDenseKOffset + pidx] *
+            inv_primal_edge_length[edgesDenseKOffset + pidx] -
+        8. * vn[edgesDenseKOffset + pidx] * inv_vert_vert_length[edgesDenseKOffset + pidx] *
+            inv_vert_vert_length[edgesDenseKOffset + pidx];
   }
 }
 
