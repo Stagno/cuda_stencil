@@ -43,12 +43,17 @@ inline void gpuAssert(cudaError_t code, const char* file, int line, bool abort =
 #define DEVICE_MISSING_VALUE -1
 
 __global__ void compute_vn(int numEdges, int numVertices, int kSize,
-                           const int* __restrict__ ecvTable, dawn::float_type* __restrict__ vn_vert,
-                           const float2* __restrict__ uv,
+                           const int* __restrict__ globalEcvTable,
+                           dawn::float_type* __restrict__ vn_vert, const float2* __restrict__ uv,
                            const float2* __restrict__ primal_normal_vert) {
+  __shared__ int ecvTable[BLOCK_SIZE * E_C_V_SIZE];
   unsigned int pidx = blockIdx.x * blockDim.x + threadIdx.x;
   if(pidx >= numEdges) {
     return;
+  }
+  for(int nbhIter = 0; nbhIter < E_C_V_SIZE; nbhIter++) {
+    ecvTable[nbhIter * BLOCK_SIZE + threadIdx.x] =
+        __ldg(&globalEcvTable[nbhIter * numEdges + pidx]);
   }
   {
     for(int kIter = 0; kIter < kSize; kIter++) {
@@ -56,7 +61,7 @@ __global__ void compute_vn(int numEdges, int numVertices, int kSize,
       const int ecvSparseKOffset = kIter * numEdges * E_C_V_SIZE;
 
       for(int nbhIter = 0; nbhIter < E_C_V_SIZE; nbhIter++) { // for(e->c->v)
-        int nbhIdx = __ldg(&ecvTable[pidx * E_C_V_SIZE + nbhIter]);
+        int nbhIdx = ecvTable[nbhIter * BLOCK_SIZE + threadIdx.x];
         if(nbhIdx == DEVICE_MISSING_VALUE) {
           continue;
         }
@@ -71,13 +76,18 @@ __global__ void compute_vn(int numEdges, int numVertices, int kSize,
 }
 
 __global__ void reduce_dvt_tang(int numEdges, int numVertices, int kSize,
-                                const int* __restrict__ ecvTable,
+                                const int* __restrict__ globalEcvTable,
                                 dawn::float_type* __restrict__ dvt_tang,
                                 const float2* __restrict__ uv,
                                 const float2* __restrict__ dual_normal_vert) {
+  __shared__ int ecvTable[BLOCK_SIZE * E_C_V_SIZE];
   unsigned int pidx = blockIdx.x * blockDim.x + threadIdx.x;
   if(pidx >= numEdges) {
     return;
+  }
+  for(int nbhIter = 0; nbhIter < E_C_V_SIZE; nbhIter++) {
+    ecvTable[nbhIter * BLOCK_SIZE + threadIdx.x] =
+        __ldg(&globalEcvTable[nbhIter * numEdges + pidx]);
   }
   const dawn::float_type weights[E_C_V_SIZE] = {-1., 1., 0., 0.};
   {
@@ -88,7 +98,7 @@ __global__ void reduce_dvt_tang(int numEdges, int numVertices, int kSize,
 
       dawn::float_type lhs = 0.;
       for(int nbhIter = 0; nbhIter < E_C_V_SIZE; nbhIter++) { // for(e->c->v)
-        int nbhIdx = __ldg(&ecvTable[pidx * E_C_V_SIZE + nbhIter]);
+        int nbhIdx = ecvTable[nbhIter * BLOCK_SIZE + threadIdx.x];
         if(nbhIdx == DEVICE_MISSING_VALUE) {
           continue;
         }
@@ -117,13 +127,18 @@ __global__ void finish_dvt_tang(int numEdges, int kSize, dawn::float_type* __res
 }
 
 __global__ void reduce_dvt_norm(int numEdges, int numVertices, int kSize,
-                                const int* __restrict__ ecvTable,
+                                const int* __restrict__ globalEcvTable,
                                 dawn::float_type* __restrict__ dvt_norm,
                                 const float2* __restrict__ uv_vert,
                                 const float2* __restrict__ dual_normal_vert) {
+  __shared__ int ecvTable[BLOCK_SIZE * E_C_V_SIZE];
   unsigned int pidx = blockIdx.x * blockDim.x + threadIdx.x;
   if(pidx >= numEdges) {
     return;
+  }
+  for(int nbhIter = 0; nbhIter < E_C_V_SIZE; nbhIter++) {
+    ecvTable[nbhIter * BLOCK_SIZE + threadIdx.x] =
+        __ldg(&globalEcvTable[nbhIter * numEdges + pidx]);
   }
   const dawn::float_type weights[E_C_V_SIZE] = {0., 0., -1., 1.};
   {
@@ -134,7 +149,7 @@ __global__ void reduce_dvt_norm(int numEdges, int numVertices, int kSize,
 
       dawn::float_type lhs = 0.;
       for(int nbhIter = 0; nbhIter < E_C_V_SIZE; nbhIter++) { // for(e->c->v)
-        int nbhIdx = __ldg(&ecvTable[pidx * E_C_V_SIZE + nbhIter]);
+        int nbhIdx = ecvTable[nbhIter * BLOCK_SIZE + threadIdx.x];
         if(nbhIdx == DEVICE_MISSING_VALUE) {
           continue;
         }
@@ -150,12 +165,17 @@ __global__ void reduce_dvt_norm(int numEdges, int numVertices, int kSize,
 }
 
 __global__ void smagorinsky_1(int numEdges, int numVertices, int kSize,
-                              const int* __restrict__ ecvTable,
+                              const int* __restrict__ globalEcvTable,
                               dawn::float_type* __restrict__ kh_smag_1,
                               const dawn::float_type* __restrict__ vn_vert) {
+  __shared__ int ecvTable[BLOCK_SIZE * E_C_V_SIZE];
   unsigned int pidx = blockIdx.x * blockDim.x + threadIdx.x;
   if(pidx >= numEdges) {
     return;
+  }
+  for(int nbhIter = 0; nbhIter < E_C_V_SIZE; nbhIter++) {
+    ecvTable[nbhIter * BLOCK_SIZE + threadIdx.x] =
+        __ldg(&globalEcvTable[nbhIter * numEdges + pidx]);
   }
   dawn::float_type weights[E_C_V_SIZE] = {-1., 1., 0., 0.};
   {
@@ -165,7 +185,7 @@ __global__ void smagorinsky_1(int numEdges, int numVertices, int kSize,
 
       dawn::float_type lhs = 0.;
       for(int nbhIter = 0; nbhIter < E_C_V_SIZE; nbhIter++) { // for(e->c->v)
-        int nbhIdx = __ldg(&ecvTable[pidx * E_C_V_SIZE + nbhIter]);
+        int nbhIdx = ecvTable[nbhIter * BLOCK_SIZE + threadIdx.x];
         if(nbhIdx == DEVICE_MISSING_VALUE) {
           continue;
         }
@@ -213,12 +233,17 @@ __global__ void smagorinsky_1_square(int numEdges, int kSize,
 }
 
 __global__ void smagorinsky_2(int numEdges, int numVertices, int kSize,
-                              const int* __restrict__ ecvTable,
+                              const int* __restrict__ globalEcvTable,
                               dawn::float_type* __restrict__ kh_smag_2,
                               const dawn::float_type* __restrict__ vn_vert) {
+  __shared__ int ecvTable[BLOCK_SIZE * E_C_V_SIZE];
   unsigned int pidx = blockIdx.x * blockDim.x + threadIdx.x;
   if(pidx >= numEdges) {
     return;
+  }
+  for(int nbhIter = 0; nbhIter < E_C_V_SIZE; nbhIter++) {
+    ecvTable[nbhIter * BLOCK_SIZE + threadIdx.x] =
+        __ldg(&globalEcvTable[nbhIter * numEdges + pidx]);
   }
   const dawn::float_type weights[E_C_V_SIZE] = {0., 0., -1., 1.};
   {
@@ -228,7 +253,7 @@ __global__ void smagorinsky_2(int numEdges, int numVertices, int kSize,
 
       dawn::float_type lhs = 0.;
       for(int nbhIter = 0; nbhIter < E_C_V_SIZE; nbhIter++) { // for(e->c->v)
-        int nbhIdx = __ldg(&ecvTable[pidx * E_C_V_SIZE + nbhIter]);
+        int nbhIdx = ecvTable[nbhIter * BLOCK_SIZE + threadIdx.x];
         if(nbhIdx == DEVICE_MISSING_VALUE) {
           continue;
         }
@@ -290,14 +315,19 @@ __global__ void smagorinsky(int numEdges, int kSize, dawn::float_type* __restric
   }
 }
 
-__global__ void diamond(int numEdges, int kSize, const int* __restrict__ ecvTable,
+__global__ void diamond(int numEdges, int kSize, const int* __restrict__ globalEcvTable,
                         dawn::float_type* __restrict__ nabla2,
                         const dawn::float_type* __restrict__ vn_vert,
                         const dawn::float_type* __restrict__ inv_primal_edge_length,
                         const dawn::float_type* __restrict__ inv_vert_vert_length) {
+  __shared__ int ecvTable[BLOCK_SIZE * E_C_V_SIZE];
   unsigned int pidx = blockIdx.x * blockDim.x + threadIdx.x;
   if(pidx >= numEdges) {
     return;
+  }
+  for(int nbhIter = 0; nbhIter < E_C_V_SIZE; nbhIter++) {
+    ecvTable[nbhIter * BLOCK_SIZE + threadIdx.x] =
+        __ldg(&globalEcvTable[nbhIter * numEdges + pidx]);
   }
   for(int kIter = 0; kIter < kSize; kIter++) {
     const int edgesDenseKOffset = kIter * numEdges;
@@ -315,7 +345,7 @@ __global__ void diamond(int numEdges, int kSize, const int* __restrict__ ecvTabl
 
     dawn::float_type lhs = 0.;
     for(int nbhIter = 0; nbhIter < E_C_V_SIZE; nbhIter++) { // for(e->c->v)
-      int nbhIdx = __ldg(&ecvTable[pidx * E_C_V_SIZE + nbhIter]);
+      int nbhIdx = ecvTable[nbhIter * BLOCK_SIZE + threadIdx.x];
       if(nbhIdx == DEVICE_MISSING_VALUE) {
         continue;
       }
@@ -351,7 +381,7 @@ __global__ void nabla2(int numEdges, int kSize, dawn::float_type* __restrict__ n
 } // namespace
 
 void generateNbhTable(atlas::Mesh const& mesh, std::vector<dawn::LocationType> chain,
-                      int numElements, int numNbhPerElement, int* target) {
+                      const int numElements, const int numNbhPerElement, int* target) {
   std::vector<atlas::idx_t> elems;
   switch(chain.front()) {
   case dawn::LocationType::Cells: {
@@ -387,9 +417,16 @@ void generateNbhTable(atlas::Mesh const& mesh, std::vector<dawn::LocationType> c
       }
     }
   }
-
   assert(hostTable.size() == numElements * numNbhPerElement);
-  gpuErrchk(cudaMemcpy(target, hostTable.data(), sizeof(int) * numElements * numNbhPerElement,
+
+  int hostTableReshaped[numElements * numNbhPerElement];
+  for(int nbhIdx = 0; nbhIdx < numNbhPerElement; nbhIdx++)
+    for(int elemIdx = 0; elemIdx < numElements; elemIdx++) {
+      hostTableReshaped[nbhIdx * numElements + elemIdx] =
+          hostTable[elemIdx * numNbhPerElement + nbhIdx];
+    }
+
+  gpuErrchk(cudaMemcpy(target, hostTableReshaped, sizeof(int) * numElements * numNbhPerElement,
                        cudaMemcpyHostToDevice));
 }
 
