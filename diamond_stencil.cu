@@ -42,6 +42,18 @@ inline void gpuAssert(cudaError_t code, const char* file, int line, bool abort =
 #define BLOCK_SIZE 128
 #define DEVICE_MISSING_VALUE -1
 
+#include <stdint.h>
+
+/* The state word must be initialized to non-zero */
+__device__ uint32_t xorshift32(uint32_t& state) {
+  /* Algorithm "xor" from p. 4 of Marsaglia, "Xorshift RNGs" */
+  uint32_t x = state;
+  x ^= x << 13;
+  x ^= x >> 17;
+  x ^= x << 5;
+  return state = x;
+}
+
 __global__ void compute_vn(int numEdges, int numVertices, int kSize,
                            const int* __restrict__ ecvTable, dawn::float_type* __restrict__ vn_vert,
                            const float2* __restrict__ uv,
@@ -82,28 +94,35 @@ reduce_dvt(int numEdges, int numVertices, int kSize, const int* __restrict__ ecv
   const dawn::float_type weights_tang[E_C_V_SIZE] = {-1., 1., 0., 0.};
   const dawn::float_type weights_norm[E_C_V_SIZE] = {0., 0., -1., 1.};
 
+  uint32_t state = 42;
+
   {
     for(int kIter = 0; kIter < kSize; kIter++) {
-      const int edgesDenseKOffset = kIter * numEdges;
-      const int verticesDenseKOffset = kIter * numVertices;
-      const int ecvSparseKOffset = kIter * numEdges * E_C_V_SIZE;
+      const int w_edgesDenseKOffset = kIter * numEdges;
+      const int w_verticesDenseKOffset = kIter * numVertices;
+      const int w_ecvSparseKOffset = kIter * numEdges * E_C_V_SIZE;
 
       dawn::float_type lhs_tang = 0.;
       dawn::float_type lhs_norm = 0.;
       for(int nbhIter = 0; nbhIter < E_C_V_SIZE; nbhIter++) { // for(e->c->v)
-        int nbhIdx = __ldg(&ecvTable[pidx * E_C_V_SIZE + nbhIter]);
+        int rand_k = xorshift32(state) % kSize;
+        const int edgesDenseKOffset = rand_k * numEdges;
+        const int verticesDenseKOffset = rand_k * numVertices;
+        const int ecvSparseKOffset = rand_k * numEdges * E_C_V_SIZE;
+        int nbhIdx = ecvTable[pidx * E_C_V_SIZE + nbhIter];
         if(nbhIdx == DEVICE_MISSING_VALUE) {
           continue;
         }
-        float2 uv_i = __ldg(&uv[verticesDenseKOffset + nbhIdx]);
-        float2 nrm_i = __ldg(&dual_normal_vert[ecvSparseKOffset + nbhIter * numEdges + pidx]);
+        float2 uv_i = uv[verticesDenseKOffset + nbhIdx];
+        float2 nrm_i = dual_normal_vert[ecvSparseKOffset + nbhIter * numEdges + pidx];
 
         dawn::float_type rhs = (uv_i.x * nrm_i.x + uv_i.y * nrm_i.y);
         lhs_tang += weights_tang[nbhIter] * rhs;
         lhs_norm += weights_norm[nbhIter] * rhs;
       }
-      dvt_tang[edgesDenseKOffset + pidx] = lhs_tang * tangent_orientation[edgesDenseKOffset + pidx];
-      dvt_norm[edgesDenseKOffset + pidx] = lhs_norm;
+      dvt_tang[w_edgesDenseKOffset + pidx] =
+          lhs_tang * tangent_orientation[w_edgesDenseKOffset + pidx];
+      dvt_norm[w_edgesDenseKOffset + pidx] = lhs_norm;
     }
   }
 }
@@ -121,15 +140,15 @@ __global__ void smagorinsky_12_and_diamond(
   }
   dawn::float_type weights_1[E_C_V_SIZE] = {-1., 1., 0., 0.};
   dawn::float_type weights_2[E_C_V_SIZE] = {0., 0., -1., 1.};
+  uint32_t state = 42;
   {
     for(int kIter = 0; kIter < kSize; kIter++) {
-      const int edgesDenseKOffset = kIter * numEdges;
-      const int ecvSparseKOffset = kIter * numEdges * E_C_V_SIZE;
+      const int w_edgesDenseKOffset = kIter * numEdges;
+      const int w_ecvSparseKOffset = kIter * numEdges * E_C_V_SIZE;
 
       const dawn::float_type __local_inv_primal =
-          __ldg(&inv_primal_edge_length[edgesDenseKOffset + pidx]);
-      const dawn::float_type __local_inv_vert =
-          __ldg(&inv_vert_vert_length[edgesDenseKOffset + pidx]);
+          inv_primal_edge_length[w_edgesDenseKOffset + pidx];
+      const dawn::float_type __local_inv_vert = inv_vert_vert_length[w_edgesDenseKOffset + pidx];
 
       const dawn::float_type weights_nabla[E_C_V_SIZE] = {
           __local_inv_primal * __local_inv_primal, __local_inv_primal * __local_inv_primal,
@@ -139,19 +158,23 @@ __global__ void smagorinsky_12_and_diamond(
       dawn::float_type lhs_2 = 0.;
       dawn::float_type lhs_nabla = 0.;
       for(int nbhIter = 0; nbhIter < E_C_V_SIZE; nbhIter++) { // for(e->c->v)
-        int nbhIdx = __ldg(&ecvTable[pidx * E_C_V_SIZE + nbhIter]);
+        int rand_k = xorshift32(state) % kSize;
+        const int edgesDenseKOffset = rand_k * numEdges;
+        const int verticesDenseKOffset = rand_k * numVertices;
+        const int ecvSparseKOffset = rand_k * numEdges * E_C_V_SIZE;
+        int nbhIdx = ecvTable[pidx * E_C_V_SIZE + nbhIter];
         if(nbhIdx == DEVICE_MISSING_VALUE) {
           continue;
         }
         const int sparseIdx = ecvSparseKOffset + nbhIter * numEdges + pidx;
-        dawn::float_type __local_vn_vert = __ldg(&vn_vert[sparseIdx]);
+        dawn::float_type __local_vn_vert = vn_vert[sparseIdx];
         lhs_1 += __local_vn_vert * weights_1[nbhIter];
         lhs_2 += __local_vn_vert * weights_2[nbhIter];
         lhs_nabla += 4. * __local_vn_vert * weights_nabla[nbhIter];
       }
-      kh_smag_1[edgesDenseKOffset + pidx] = lhs_1;
-      kh_smag_2[edgesDenseKOffset + pidx] = lhs_2;
-      nabla2[edgesDenseKOffset + pidx] = lhs_nabla;
+      kh_smag_1[w_edgesDenseKOffset + pidx] = lhs_1;
+      kh_smag_2[w_edgesDenseKOffset + pidx] = lhs_2;
+      nabla2[w_edgesDenseKOffset + pidx] = lhs_nabla;
     }
   }
 } // namespace
