@@ -56,7 +56,7 @@ __global__ void compute_vn(int numEdges, int numVertices, int kSize,
       const int ecvSparseKOffset = kIter * numEdges * E_C_V_SIZE;
 
       for(int nbhIter = 0; nbhIter < E_C_V_SIZE; nbhIter++) { // for(e->c->v)
-        int nbhIdx = __ldg(&ecvTable[pidx * E_C_V_SIZE + nbhIter]);
+        int nbhIdx = ecvTable[pidx * E_C_V_SIZE + nbhIter];
         if(nbhIdx == DEVICE_MISSING_VALUE) {
           continue;
         }
@@ -88,7 +88,7 @@ __global__ void reduce_dvt_tang(int numEdges, int numVertices, int kSize,
 
       dawn::float_type lhs = 0.;
       for(int nbhIter = 0; nbhIter < E_C_V_SIZE; nbhIter++) { // for(e->c->v)
-        int nbhIdx = __ldg(&ecvTable[pidx * E_C_V_SIZE + nbhIter]);
+        int nbhIdx = ecvTable[pidx * E_C_V_SIZE + nbhIter];
         if(nbhIdx == DEVICE_MISSING_VALUE) {
           continue;
         }
@@ -134,7 +134,7 @@ __global__ void reduce_dvt_norm(int numEdges, int numVertices, int kSize,
 
       dawn::float_type lhs = 0.;
       for(int nbhIter = 0; nbhIter < E_C_V_SIZE; nbhIter++) { // for(e->c->v)
-        int nbhIdx = __ldg(&ecvTable[pidx * E_C_V_SIZE + nbhIter]);
+        int nbhIdx = ecvTable[pidx * E_C_V_SIZE + nbhIter];
         if(nbhIdx == DEVICE_MISSING_VALUE) {
           continue;
         }
@@ -165,7 +165,7 @@ __global__ void smagorinsky_1(int numEdges, int numVertices, int kSize,
 
       dawn::float_type lhs = 0.;
       for(int nbhIter = 0; nbhIter < E_C_V_SIZE; nbhIter++) { // for(e->c->v)
-        int nbhIdx = __ldg(&ecvTable[pidx * E_C_V_SIZE + nbhIter]);
+        int nbhIdx = ecvTable[pidx * E_C_V_SIZE + nbhIter];
         if(nbhIdx == DEVICE_MISSING_VALUE) {
           continue;
         }
@@ -228,7 +228,7 @@ __global__ void smagorinsky_2(int numEdges, int numVertices, int kSize,
 
       dawn::float_type lhs = 0.;
       for(int nbhIter = 0; nbhIter < E_C_V_SIZE; nbhIter++) { // for(e->c->v)
-        int nbhIdx = __ldg(&ecvTable[pidx * E_C_V_SIZE + nbhIter]);
+        int nbhIdx = ecvTable[pidx * E_C_V_SIZE + nbhIter];
         if(nbhIdx == DEVICE_MISSING_VALUE) {
           continue;
         }
@@ -315,7 +315,7 @@ __global__ void diamond(int numEdges, int kSize, const int* __restrict__ ecvTabl
 
     dawn::float_type lhs = 0.;
     for(int nbhIter = 0; nbhIter < E_C_V_SIZE; nbhIter++) { // for(e->c->v)
-      int nbhIdx = __ldg(&ecvTable[pidx * E_C_V_SIZE + nbhIter]);
+      int nbhIdx = ecvTable[pidx * E_C_V_SIZE + nbhIter];
       if(nbhIdx == DEVICE_MISSING_VALUE) {
         continue;
       }
