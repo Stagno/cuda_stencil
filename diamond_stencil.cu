@@ -42,6 +42,7 @@ inline void gpuAssert(cudaError_t code, const char* file, int line, bool abort =
 #define E_C_V_SIZE 4
 #define BLOCK_SIZE 32
 #define DEVICE_MISSING_VALUE -1
+#define K_SIZE 80
 
 __global__ void merged(int numEdges, int numVertices, int kSize, const int* __restrict__ ecvTable,
                        dawn::float_type* __restrict__ nabla2,
@@ -64,7 +65,7 @@ __global__ void merged(int numEdges, int numVertices, int kSize, const int* __re
   const dawn::float_type weights_tang[E_C_V_SIZE] = {-1., 1., 0., 0.};
   const dawn::float_type weights_norm[E_C_V_SIZE] = {0., 0., -1., 1.};
   {
-    for(int kIter = 0; kIter < kSize; kIter++) {
+    for(int kIter = 0; kIter < K_SIZE; kIter++) {
       const int edgesDenseKOffset = kIter * numEdges;
       const int verticesDenseKOffset = kIter * numVertices;
       const int ecvSparseKOffset = kIter * numEdges * E_C_V_SIZE;
